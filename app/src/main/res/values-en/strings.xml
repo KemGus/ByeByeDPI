@@ -253,4 +253,19 @@
     <string name="network_suggest_title">Strategy for network “%1$s”</string>
     <string name="network_suggest_message">The best strategy saved for this network:\n%1$s\n\nApply it?</string>
     <string name="network_suggest_apply">Apply</string>
+    <string name="decision_log">Decision log</string>
+    <string name="decision_log_empty">Nothing yet. Run a test to see what is tried and why</string>
+    <string name="decision_log_clear">Clear log</string>
+    <string name="network_panel_current">Network: %1$s</string>
+    <string name="network_panel_best">Best result here: %1$d%%</string>
+    <string name="network_panel_none">No results for this network yet</string>
+    <string name="kind_run">Run</string>
+    <string name="kind_order">Order</string>
+    <string name="kind_skip">Skip</string>
+    <string name="kind_seed">Seed</string>
+    <string name="kind_try">Try</string>
+    <string name="kind_result">Result</string>
+    <string name="kind_stop">Stop</string>
+    <string name="kind_network">Network</string>
+    <string name="kind_switch">Switch</string>
 </resources>

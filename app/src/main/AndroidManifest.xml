@@ -73,6 +73,11 @@
             android:exported="false"/>
 
         <activity
+            android:name=".activities.DecisionLogActivity"
+            android:label="@string/decision_log"
+            android:exported="false"/>
+
+        <activity
             android:name=".activities.TestSettingsActivity"
             android:label="@string/title_settings"
             android:exported="false"/>

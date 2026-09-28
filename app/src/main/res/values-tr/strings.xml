@@ -253,4 +253,19 @@
     <string name="network_suggest_title">“%1$s” ağı için strateji</string>
     <string name="network_suggest_message">Bu ağ için kaydedilmiş en iyi strateji:\n%1$s\n\nUygulansın mı?</string>
     <string name="network_suggest_apply">Uygula</string>
+    <string name="decision_log">Karar günlüğü</string>
+    <string name="decision_log_empty">Henüz boş. Neyin neden denendiğini görmek için testi çalıştırın</string>
+    <string name="decision_log_clear">Günlüğü temizle</string>
+    <string name="network_panel_current">Ağ: %1$s</string>
+    <string name="network_panel_best">Buradaki en iyi sonuç: %1$d%%</string>
+    <string name="network_panel_none">Bu ağ için henüz sonuç yok</string>
+    <string name="kind_run">Başlat</string>
+    <string name="kind_order">Sıra</string>
+    <string name="kind_skip">Atla</string>
+    <string name="kind_seed">Kaynak</string>
+    <string name="kind_try">Dene</string>
+    <string name="kind_result">Sonuç</string>
+    <string name="kind_stop">Dur</string>
+    <string name="kind_network">Ağ</string>
+    <string name="kind_switch">Geçiş</string>
 </resources>

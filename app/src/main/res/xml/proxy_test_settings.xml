@@ -75,7 +75,7 @@
         android:entries="@array/network_apply_modes"
         android:entryValues="@array/network_apply_modes_entries"
         android:summary="%s"
-        android:defaultValue="off"
+        android:defaultValue="suggest"
         app:iconSpaceReserved="false" />
 
     <EditTextPreference

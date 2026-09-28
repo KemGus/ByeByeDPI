@@ -253,4 +253,19 @@
     <string name="network_suggest_title">«%1$s» желісіне арналған стратегия</string>
     <string name="network_suggest_message">Осы желі үшін сақталған ең жақсы стратегия:\n%1$s\n\nҚолдану керек пе?</string>
     <string name="network_suggest_apply">Қолдану</string>
+    <string name="decision_log">Шешімдер журналы</string>
+    <string name="decision_log_empty">Әзірге бос. Не және неге сыналатынын көру үшін тестті іске қосыңыз</string>
+    <string name="decision_log_clear">Журналды тазалау</string>
+    <string name="network_panel_current">Желі: %1$s</string>
+    <string name="network_panel_best">Осындағы ең жақсы нәтиже: %1$d%%</string>
+    <string name="network_panel_none">Бұл желі үшін нәтиже әлі жоқ</string>
+    <string name="kind_run">Іске қосу</string>
+    <string name="kind_order">Реті</string>
+    <string name="kind_skip">Өткізу</string>
+    <string name="kind_seed">Негіз</string>
+    <string name="kind_try">Сынақ</string>
+    <string name="kind_result">Нәтиже</string>
+    <string name="kind_stop">Тоқтау</string>
+    <string name="kind_network">Желі</string>
+    <string name="kind_switch">Ауыстыру</string>
 </resources>

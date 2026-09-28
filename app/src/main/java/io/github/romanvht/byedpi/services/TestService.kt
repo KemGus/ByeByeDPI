@@ -20,6 +20,7 @@ import com.google.gson.reflect.TypeToken
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.activities.TestActivity
 import io.github.romanvht.byedpi.data.*
+import io.github.romanvht.byedpi.strategy.DecisionKind
 import io.github.romanvht.byedpi.strategy.StrategyMutator
 import io.github.romanvht.byedpi.strategy.StrategyPlanner
 import io.github.romanvht.byedpi.utility.*
@@ -194,7 +195,12 @@ class TestService : Service() {
                 val network = withContext(Dispatchers.IO) { NetworkProfileUtils.currentNetwork(this@TestService) }
                 val known = withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).scores(network.key) }
                 val commands = StrategyPlanner.order(options.commands, known)
-                Log.i(TAG, "Testing ${commands.size} strategies on ${network.key}, ${known.size} already known")
+                val proven = commands.count { (known[it] ?: 0) > 0 }
+                val dead = commands.count { known[it] == 0 }
+                decide(DecisionKind.Run, "Test started on ${network.label}",
+                    "${commands.size} strategies, network id ${network.key}, ${known.size} already scored here")
+                decide(DecisionKind.Order, "Order: $proven proven first, ${commands.size - proven - dead} new, $dead known-dead last",
+                    commands.take(3).mapIndexed { i, c -> "${i + 1}. ${known[c]?.let { "$it%" } ?: "new"}  $c" }.joinToString("\n"))
                 strategies.addAll(commands.map { StrategyResult(command = it) })
                 prepared = true
                 getPreferences().edit(commit = true) { putBoolean("is_test_running", true) }
@@ -218,6 +224,7 @@ class TestService : Service() {
                     withContext(Dispatchers.IO) {
                         NetworkProfileUtils.record(this@TestService, network, strategy.command, strategy.successPercentage)
                     }
+                    decide(DecisionKind.Result, "${strategy.successPercentage}%  (${strategy.successCount}/${strategy.totalRequests})", strategy.command)
                     stopEngine()
                     currentStrategy = null
                     delay(options.delaySec * 500L)
@@ -233,19 +240,26 @@ class TestService : Service() {
                     for (round in 1..ADAPTIVE_ROUNDS) {
                         if (best >= 100) break
                         val scores = strategies.associate { it.command to it.successPercentage }
-                        val seeds = StrategyPlanner.seeds(scores, ADAPTIVE_SEEDS)
-                            .ifEmpty { listOfNotNull(withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).best(network.key) }) }
+                        var seeds = StrategyPlanner.seeds(scores, ADAPTIVE_SEEDS)
+                        if (seeds.isEmpty()) {
+                            seeds = listOfNotNull(withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).best(network.key) })
+                            if (seeds.isNotEmpty()) decide(DecisionKind.Seed, "Round $round: nothing worked this run", "Falling back to the saved best for ${network.label}")
+                        } else {
+                            decide(DecisionKind.Seed, "Round $round: improving the top ${seeds.size}",
+                                seeds.joinToString("\n") { "${scores[it]}%  $it" })
+                        }
                         val generated = seeds.flatMap { seed ->
                             StrategyMutator.candidates(seed, ADAPTIVE_CANDIDATES, kotlin.random.Random, tested).map { seed to it }
                         }.distinctBy { it.second }
                         if (generated.isEmpty()) {
-                            Log.i(TAG, "Adaptive round $round: nothing to try")
+                            decide(DecisionKind.Stop, "Round $round: no new variations left", "Every nearby variation was already tested")
                             break
                         }
                         var improved = false
                         for ((seed, command) in generated) {
                             tested.add(command)
                             val parent = scores[seed] ?: known[seed] ?: 0
+                            decide(DecisionKind.Try, "Trying a variation of a $parent% strategy", "${StrategyMutator.describe(seed, command)}\n$command")
                             val strategy = StrategyResult(command = command)
                             strategies.add(strategy)
                             runStrategy(strategy, strategies.lastIndex)
@@ -257,7 +271,7 @@ class TestService : Service() {
                                 else -> "no gain ($parent% -> $score%)"
                             }
                             strategy.note = "generated from $seed: $outcome"
-                            Log.i(TAG, "Adaptive round $round: $command $outcome")
+                            decide(DecisionKind.Result, outcome, command)
                             publish(strategies)
                             saveResults(strategies)
                             if (score > best) {
@@ -265,9 +279,14 @@ class TestService : Service() {
                                 improved = true
                             }
                         }
-                        if (!improved) break
+                        if (!improved) {
+                            decide(DecisionKind.Stop, "Round $round found nothing better than $best%", "Stopping the search")
+                            break
+                        }
                     }
+                    if (best >= 100) decide(DecisionKind.Stop, "Reached 100%", "Nothing left to improve")
                 }
+                decide(DecisionKind.Run, "Test finished", "Best result: ${strategies.maxOfOrNull { it.successPercentage } ?: 0}%")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -341,7 +360,9 @@ class TestService : Service() {
                                 strategy.siteResults.add(SiteResult(site, successCount, countRequests))
                                 publish(strategies)
                                 checked++
-                                if (StrategyPlanner.isHopeless(checked, strategy.successCount)) hopeless.complete(false)
+                                if (StrategyPlanner.isHopeless(checked, strategy.successCount) && hopeless.complete(false)) {
+                                    decide(DecisionKind.Skip, "Dropped early: 0 of the first $checked sites got through", strategy.command)
+                                }
                             }
                         }
                     )
@@ -410,6 +431,9 @@ class TestService : Service() {
         return TestSettings(DomainListUtils.getActiveDomains(this).toList(), commands, host, port,
             delaySec, requestsCount, requestTimeout, requestLimit)
     }
+
+    private fun decide(kind: DecisionKind, title: String, detail: String = "") =
+        DecisionLogUtils.add(this, kind, title, detail)
 
     private fun resetStrategyResult(strategy: StrategyResult, settings: TestSettings) {
         strategy.successCount = 0

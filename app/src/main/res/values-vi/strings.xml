@@ -254,4 +254,19 @@
     <string name="network_suggest_title">Chiến lược cho mạng “%1$s”</string>
     <string name="network_suggest_message">Chiến lược tốt nhất đã lưu cho mạng này:\n%1$s\n\nÁp dụng?</string>
     <string name="network_suggest_apply">Áp dụng</string>
+    <string name="decision_log">Nhật ký quyết định</string>
+    <string name="decision_log_empty">Chưa có gì. Chạy kiểm tra để xem thử gì và vì sao</string>
+    <string name="decision_log_clear">Xóa nhật ký</string>
+    <string name="network_panel_current">Mạng: %1$s</string>
+    <string name="network_panel_best">Kết quả tốt nhất ở đây: %1$d%%</string>
+    <string name="network_panel_none">Chưa có kết quả cho mạng này</string>
+    <string name="kind_run">Chạy</string>
+    <string name="kind_order">Thứ tự</string>
+    <string name="kind_skip">Bỏ qua</string>
+    <string name="kind_seed">Gốc</string>
+    <string name="kind_try">Thử</string>
+    <string name="kind_result">Kết quả</string>
+    <string name="kind_stop">Dừng</string>
+    <string name="kind_network">Mạng</string>
+    <string name="kind_switch">Chuyển</string>
 </resources>

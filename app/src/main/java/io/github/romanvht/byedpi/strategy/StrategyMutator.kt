@@ -39,6 +39,14 @@ object StrategyMutator {
         return tokens.toMutableList().also { it[index] = mutated }.joinToString(" ")
     }
 
+    /** Human readable difference between two commands, e.g. "-s3:5+sm → -s4:5+sm". */
+    fun describe(seed: String, candidate: String): String {
+        val before = seed.trim().split(Regex("\\s+"))
+        val after = candidate.trim().split(Regex("\\s+"))
+        val changes = before.zip(after).filter { it.first != it.second }.map { "${it.first} → ${it.second}" }
+        return if (changes.isEmpty() || before.size != after.size) candidate else changes.joinToString(", ")
+    }
+
     private fun mutateToken(token: String, random: Random): String? {
         positional.matchEntire(token)?.let { match ->
             val (kind, offset, repeat, flags) = match.destructured

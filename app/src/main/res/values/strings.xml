@@ -253,4 +253,19 @@
     <string name="network_suggest_title">Стратегия для сети «%1$s»</string>
     <string name="network_suggest_message">Для этой сети сохранена лучшая стратегия:\n%1$s\n\nПрименить?</string>
     <string name="network_suggest_apply">Применить</string>
+    <string name="decision_log">Журнал решений</string>
+    <string name="decision_log_empty">Пока пусто. Запустите тест — здесь появится, что и почему пробуется</string>
+    <string name="decision_log_clear">Очистить журнал</string>
+    <string name="network_panel_current">Сеть: %1$s</string>
+    <string name="network_panel_best">Лучший результат здесь: %1$d%%</string>
+    <string name="network_panel_none">Для этой сети ещё нет результатов</string>
+    <string name="kind_run">Запуск</string>
+    <string name="kind_order">Порядок</string>
+    <string name="kind_skip">Пропуск</string>
+    <string name="kind_seed">Основа</string>
+    <string name="kind_try">Проба</string>
+    <string name="kind_result">Итог</string>
+    <string name="kind_stop">Стоп</string>
+    <string name="kind_network">Сеть</string>
+    <string name="kind_switch">Смена</string>
 </resources>

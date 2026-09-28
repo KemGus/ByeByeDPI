@@ -48,4 +48,10 @@ class StrategyMutatorTest {
         val filtered = StrategyMutator.candidates("-t8", 20, Random(2), exclude = all.toSet())
         assertTrue(filtered.none { it in all })
     }
+
+    @Test
+    fun describesWhatChanged() {
+        assertEquals("-s3:5+sm → -s4:5+sm", StrategyMutator.describe("-Qr -s3:5+sm -a1", "-Qr -s4:5+sm -a1"))
+        assertEquals("-a2", StrategyMutator.describe("-a1", "-a2").substringAfter("→ "))
+    }
 }

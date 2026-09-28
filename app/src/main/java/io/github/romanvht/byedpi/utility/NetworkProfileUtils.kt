@@ -39,7 +39,7 @@ object NetworkProfileUtils {
     private val lock = Any()
 
     fun applyMode(context: Context): ApplyMode =
-        ApplyMode.fromString(context.getPreferences().getStringNotNull("byedpi_network_apply", "off"))
+        ApplyMode.fromString(context.getPreferences().getStringNotNull("byedpi_network_apply", "suggest"))
 
     fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -107,11 +107,20 @@ object NetworkProfileUtils {
         }
     }
 
+    /** What we know about the current network: its best command and whether that one is already in use. */
+    data class NetworkBest(val network: NetworkId, val command: String?, val score: Int, val inUse: Boolean)
+
+    fun bestFor(context: Context): NetworkBest {
+        val network = currentNetwork(context)
+        val best = load(context).profiles[network.key]?.best
+        val inUse = best != null && best.key == context.getPreferences().getCmdArgs()
+        return NetworkBest(network, best?.key, best?.value?.score ?: 0, inUse)
+    }
+
     /** Best known command for the current network, if it differs from the one in use. */
     fun pendingBest(context: Context): Pair<NetworkId, String>? {
-        val network = currentNetwork(context)
-        val best = load(context).best(network.key) ?: return null
-        return if (best != context.getPreferences().getCmdArgs()) network to best else null
+        val best = bestFor(context)
+        return if (best.command != null && !best.inUse) best.network to best.command else null
     }
 
     fun apply(context: Context, command: String) {

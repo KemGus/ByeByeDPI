@@ -9,7 +9,9 @@ import android.os.Build
 import android.util.Log
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.data.*
+import io.github.romanvht.byedpi.strategy.DecisionKind
 import io.github.romanvht.byedpi.utility.ApplyMode
+import io.github.romanvht.byedpi.utility.DecisionLogUtils
 import io.github.romanvht.byedpi.utility.NetworkProfileUtils
 import io.github.romanvht.byedpi.utility.createPauseNotification
 import io.github.romanvht.byedpi.utility.registerNotificationChannel
@@ -277,17 +279,30 @@ object ServiceManager {
         current.job?.start()
     }
 
-    /** In auto mode, restart with the best known strategy when the physical network changes. */
+    /** Restart with the best known strategy when the physical network changes (in auto mode). */
     private suspend fun switchOnNetworkChange(current: Session) {
         val app = application ?: return
+        var lastNetwork: String? = null
         NetworkProfileUtils.networkChanges(app).collectLatest {
             delay(NETWORK_SETTLE_MS) // the Wi-Fi name is not always readable right after the network appears
-            if (TestService.isRunning || NetworkProfileUtils.applyMode(app) != ApplyMode.Auto) return@collectLatest
-            val (network, command) = withContext(Dispatchers.IO) { NetworkProfileUtils.pendingBest(app) }
-                ?: return@collectLatest
-            Log.i(TAG, "Network changed to ${network.key}, switching to: $command")
-            NetworkProfileUtils.apply(app, command)
-            restart(app, current.mode)
+            val best = withContext(Dispatchers.IO) { NetworkProfileUtils.bestFor(app) }
+            if (best.network.key == lastNetwork) return@collectLatest
+            lastNetwork = best.network.key
+
+            val mode = NetworkProfileUtils.applyMode(app)
+            fun decide(kind: DecisionKind, title: String, detail: String = "") = DecisionLogUtils.add(app, kind, title, detail)
+            decide(DecisionKind.Network, "Network is now ${best.network.label}", "id ${best.network.key}, auto-switch: ${mode.value}")
+            when {
+                TestService.isRunning -> decide(DecisionKind.Skip, "Not switching: a test is running")
+                best.command == null -> decide(DecisionKind.Skip, "No saved strategy for this network", "Run a test here to teach the app what works")
+                best.inUse -> decide(DecisionKind.Skip, "Already using the best strategy (${best.score}%)", best.command)
+                mode != ApplyMode.Auto -> decide(DecisionKind.Skip, "A better strategy exists (${best.score}%) but auto-switch is ${mode.value}", best.command)
+                else -> {
+                    decide(DecisionKind.Switch, "Switching to the best for ${best.network.label} (${best.score}%)", best.command)
+                    NetworkProfileUtils.apply(app, best.command)
+                    restart(app, current.mode)
+                }
+            }
         }
     }
 

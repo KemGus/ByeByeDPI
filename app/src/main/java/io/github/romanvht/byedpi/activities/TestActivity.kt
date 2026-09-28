@@ -1,5 +1,6 @@
 package io.github.romanvht.byedpi.activities
 
+import android.Manifest
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.VpnService
@@ -11,6 +12,7 @@ import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -18,6 +20,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.materialswitch.MaterialSwitch
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.adapters.StrategyResultAdapter
 import io.github.romanvht.byedpi.data.AppStatus
@@ -27,7 +31,10 @@ import io.github.romanvht.byedpi.data.TestState
 import io.github.romanvht.byedpi.services.ServiceManager
 import io.github.romanvht.byedpi.services.TestService
 import io.github.romanvht.byedpi.services.appStatus
+import io.github.romanvht.byedpi.utility.ApplyMode
 import io.github.romanvht.byedpi.utility.HistoryUtils
+import io.github.romanvht.byedpi.utility.NetworkProfileUtils
+import io.github.romanvht.byedpi.utility.getStringNotNull
 import io.github.romanvht.byedpi.utility.getPreferences
 import io.github.romanvht.byedpi.utility.mode
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +50,17 @@ class TestActivity : BaseActivity() {
     private lateinit var strategyAdapter: StrategyResultAdapter
     private lateinit var cmdHistoryUtils: HistoryUtils
 
+    private lateinit var networkTextView: TextView
+    private lateinit var networkBestTextView: TextView
+    private lateinit var applyToggleGroup: MaterialButtonToggleGroup
+    private lateinit var applyBestButton: MaterialButton
+    private lateinit var wifiPermissionButton: MaterialButton
+    private var bindingPanel = false
+    private var pendingBest: String? = null
+    private var wasRunning = false
+    private val locationRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { refreshNetworkPanel() }
+
     private val strategies = mutableListOf<StrategyResult>()
     private var renderedRunId = -1L
     private val isTesting: Boolean get() = TestService.isRunning
@@ -54,6 +72,7 @@ class TestActivity : BaseActivity() {
         setContentView(R.layout.activity_proxy_test)
         setupToolbar()
 
+        setupNetworkPanel()
         cmdHistoryUtils = HistoryUtils(this)
         strategiesRecyclerView = findViewById(R.id.strategiesRecyclerView)
         startStopButton = findViewById(R.id.startStopButton)
@@ -109,6 +128,71 @@ class TestActivity : BaseActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshNetworkPanel()
+    }
+
+    private val applyButtons = listOf(
+        R.id.applyOffButton to ApplyMode.Off,
+        R.id.applySuggestButton to ApplyMode.Suggest,
+        R.id.applyAutoButton to ApplyMode.Auto,
+    )
+
+    private fun setupNetworkPanel() {
+        networkTextView = findViewById(R.id.networkTextView)
+        networkBestTextView = findViewById(R.id.networkBestTextView)
+        applyToggleGroup = findViewById(R.id.applyToggleGroup)
+        applyBestButton = findViewById(R.id.applyBestButton)
+        wifiPermissionButton = findViewById(R.id.wifiPermissionButton)
+
+        val labels = resources.getStringArray(R.array.network_apply_modes)
+        applyButtons.forEachIndexed { index, (id, _) -> findViewById<MaterialButton>(id).text = labels[index] }
+
+        applyToggleGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (bindingPanel || !isChecked) return@addOnButtonCheckedListener
+            val mode = applyButtons.first { it.first == checkedId }.second
+            prefs.edit { putString("byedpi_network_apply", mode.value) }
+            if (mode != ApplyMode.Off) requestLocationIfNeeded()
+        }
+
+        val adaptive = findViewById<MaterialSwitch>(R.id.adaptiveSwitch)
+        adaptive.isChecked = prefs.getBoolean("byedpi_proxytest_adaptive", true)
+        adaptive.setOnCheckedChangeListener { _, checked ->
+            prefs.edit { putBoolean("byedpi_proxytest_adaptive", checked) }
+        }
+
+        wifiPermissionButton.setOnClickListener { locationRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION) }
+        applyBestButton.setOnClickListener { pendingBest?.let { addToHistory(it) } }
+        findViewById<MaterialButton>(R.id.decisionLogButton).setOnClickListener {
+            startActivity(Intent(this, DecisionLogActivity::class.java))
+        }
+    }
+
+    private fun requestLocationIfNeeded() {
+        val named = prefs.getStringNotNull("byedpi_network_name", "").isNotBlank()
+        if (!named && !NetworkProfileUtils.hasLocationPermission(this)) {
+            locationRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+
+    private fun refreshNetworkPanel() {
+        lifecycleScope.launch {
+            val best = withContext(Dispatchers.IO) { NetworkProfileUtils.bestFor(this@TestActivity) }
+            networkTextView.text = getString(R.string.network_panel_current, best.network.label)
+            networkBestTextView.text = if (best.command == null) getString(R.string.network_panel_none)
+            else getString(R.string.network_panel_best, best.score)
+
+            pendingBest = best.command?.takeIf { !best.inUse }
+            applyBestButton.visibility = if (pendingBest != null && !isTesting) View.VISIBLE else View.GONE
+            wifiPermissionButton.visibility = if (NetworkProfileUtils.hasLocationPermission(this@TestActivity)) View.GONE else View.VISIBLE
+
+            bindingPanel = true
+            applyToggleGroup.check(applyButtons.first { it.second == NetworkProfileUtils.applyMode(this@TestActivity) }.first)
+            bindingPanel = false
+        }
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_test, menu)
         return true
@@ -129,6 +213,10 @@ class TestActivity : BaseActivity() {
                 }
                 true
             }
+            R.id.action_decision_log -> {
+                startActivity(Intent(this, DecisionLogActivity::class.java))
+                true
+            }
             android.R.id.home -> {
                 onBackPressedDispatcher.onBackPressed()
                 true
@@ -138,6 +226,8 @@ class TestActivity : BaseActivity() {
     }
 
     private fun renderState(state: TestState) {
+        if (wasRunning && !state.isRunning) refreshNetworkPanel()
+        wasRunning = state.isRunning
         startStopButton.text = getString(if (state.isRunning) R.string.test_stop else R.string.test_start)
         startStopButton.isEnabled = !state.isStopping
         if (state.isRunning) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
