@@ -9,10 +9,12 @@ import android.os.Build
 import android.util.Log
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.data.*
+import io.github.romanvht.byedpi.utility.ApplyMode
 import io.github.romanvht.byedpi.utility.NetworkProfileUtils
 import io.github.romanvht.byedpi.utility.createPauseNotification
 import io.github.romanvht.byedpi.utility.registerNotificationChannel
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong
 object ServiceManager {
     private const val TAG = "ServiceManager"
     private const val PAUSE_NOTIFICATION_ID = 3
+    private const val NETWORK_SETTLE_MS = 2_000L
     private val scope = CoroutineScope(
         Dispatchers.Main.immediate + SupervisorJob() + CoroutineExceptionHandler {
             _, error -> Log.e(TAG, "Service command failed", error)
@@ -239,7 +242,14 @@ object ServiceManager {
                     publish(current.mode, AppStatus.Running, STARTED_BROADCAST)
                     current.started.complete(true)
                 }
-                current.engine.awaitExit()
+                coroutineScope {
+                    val watcher = launch { switchOnNetworkChange(current) }
+                    try {
+                        current.engine.awaitExit()
+                    } finally {
+                        watcher.cancel()
+                    }
+                }
             } catch (_: CancellationException) {
                 failed = !current.stopping
             } catch (e: Exception) {
@@ -265,6 +275,20 @@ object ServiceManager {
             }
         }
         current.job?.start()
+    }
+
+    /** In auto mode, restart with the best known strategy when the physical network changes. */
+    private suspend fun switchOnNetworkChange(current: Session) {
+        val app = application ?: return
+        NetworkProfileUtils.networkChanges(app).collectLatest {
+            delay(NETWORK_SETTLE_MS) // the Wi-Fi name is not always readable right after the network appears
+            if (TestService.isRunning || NetworkProfileUtils.applyMode(app) != ApplyMode.Auto) return@collectLatest
+            val (network, command) = withContext(Dispatchers.IO) { NetworkProfileUtils.pendingBest(app) }
+                ?: return@collectLatest
+            Log.i(TAG, "Network changed to ${network.key}, switching to: $command")
+            NetworkProfileUtils.apply(app, command)
+            restart(app, current.mode)
+        }
     }
 
     private fun finish(current: Session, failed: Boolean) {

@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.telephony.TelephonyManager
 import android.util.AtomicFile
@@ -13,6 +15,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.google.gson.Gson
 import io.github.romanvht.byedpi.strategy.ProfileBook
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import java.io.File
 
 /** A network the user can be on. `key` identifies it, `label` is what we show. */
@@ -120,4 +126,20 @@ object NetworkProfileUtils {
             apply(context, command)
         }
     }
+
+    /** Emits whenever a physical (non-VPN) network appears, changes or goes away. */
+    fun networkChanges(context: Context): Flow<Unit> = callbackFlow {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { trySend(Unit) }
+            override fun onLost(network: Network) { trySend(Unit) }
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) { trySend(Unit) }
+        }
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        manager.registerNetworkCallback(request, callback)
+        awaitClose { manager.unregisterNetworkCallback(callback) }
+    }.conflate()
 }
