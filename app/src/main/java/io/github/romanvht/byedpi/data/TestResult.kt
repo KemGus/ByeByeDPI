@@ -7,7 +7,8 @@ data class StrategyResult(
     var currentProgress: Int = 0,
     var isCompleted: Boolean = false,
     val siteResults: MutableList<SiteResult> = mutableListOf(),
-    var isExpanded: Boolean = false
+    var isExpanded: Boolean = false,
+    var note: String? = null
 ) {
     val successPercentage: Int
         get() = if (totalRequests > 0) (successCount * 100) / totalRequests else 0

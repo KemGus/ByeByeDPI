@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.data.*
+import io.github.romanvht.byedpi.utility.NetworkProfileUtils
 import io.github.romanvht.byedpi.utility.createPauseNotification
 import io.github.romanvht.byedpi.utility.registerNotificationChannel
 import kotlinx.coroutines.*
@@ -186,6 +187,7 @@ object ServiceManager {
     private fun configure(current: Session, app: Application) {
         if (current.configuration.isCompleted || current.started.isCompleted) return
         try {
+            NetworkProfileUtils.applyIfAuto(app)
             current.configuration.complete(NativeEngine.configuration(app))
         } catch (e: Exception) {
             current.configuration.completeExceptionally(e)

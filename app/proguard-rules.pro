@@ -17,6 +17,9 @@
 -keep,allowoptimization class io.github.romanvht.byedpi.data.** {
     <fields>;
 }
+-keep,allowoptimization class io.github.romanvht.byedpi.strategy.** {
+    <fields>;
+}
 
 -keepattributes Signature
 -keepattributes *Annotation*

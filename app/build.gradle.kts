@@ -40,6 +40,7 @@ android {
             isShrinkResources = true
         }
         debug {
+            applicationIdSuffix = ".dev"
             buildConfigField("String", "VERSION_NAME",  "\"${defaultConfig.versionName}-debug\"")
         }
     }

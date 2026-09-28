@@ -242,4 +242,15 @@
     <string name="file_picker_unavailable">The device has no system file picker. Grant the app file access to continue.</string>
     <string name="grant_access">Grant access</string>
     <string name="storage_access_not_granted">File access was not granted</string>
+    <string name="test_adaptive">Generate new strategies automatically</string>
+    <string name="test_adaptive_summary">After the list, tries to improve the best ones</string>
+    <string name="network_apply">Per-network strategy</string>
+    <string name="network_name">Network name (manual)</string>
+    <string name="network_name_summary">Empty — detect the network automatically</string>
+    <string name="network_location">Allow reading the Wi-Fi name</string>
+    <string name="network_location_summary">Needs location access, otherwise all Wi-Fi networks look the same</string>
+    <string name="network_location_granted">Granted</string>
+    <string name="network_suggest_title">Strategy for network “%1$s”</string>
+    <string name="network_suggest_message">The best strategy saved for this network:\n%1$s\n\nApply it?</string>
+    <string name="network_suggest_apply">Apply</string>
 </resources>

@@ -1,7 +1,9 @@
 package io.github.romanvht.byedpi.fragments
 
+import android.Manifest
 import android.content.SharedPreferences
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.*
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.utility.*
@@ -12,6 +14,9 @@ class ProxyTestSettingsFragment : PreferenceFragmentCompat() {
         SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
             updatePreferences()
         }
+
+    private val locationRequest =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { updatePreferences() }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.proxy_test_settings, rootKey)
@@ -27,6 +32,11 @@ class ProxyTestSettingsFragment : PreferenceFragmentCompat() {
         setEditTestPreferenceListenerInt("byedpi_proxytest_limit", 1, 50)
 
         setEditTestPreferenceListenerDomain("byedpi_proxytest_sni")
+
+        findPreferenceNotNull<Preference>("byedpi_network_location").setOnPreferenceClickListener {
+            locationRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            true
+        }
 
         updatePreferences()
     }
@@ -55,6 +65,12 @@ class ProxyTestSettingsFragment : PreferenceFragmentCompat() {
         }
 
         textUserCommands.isEnabled = switchUserCommands.isChecked
+
+        findPreferenceNotNull<Preference>("byedpi_network_location").apply {
+            val granted = NetworkProfileUtils.hasLocationPermission(requireContext())
+            isEnabled = !granted
+            summary = getString(if (granted) R.string.network_location_granted else R.string.network_location_summary)
+        }
     }
 
     private fun setupNumberSummary(key: String, descriptionResId: Int) {

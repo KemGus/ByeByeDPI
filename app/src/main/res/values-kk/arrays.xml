@@ -26,4 +26,14 @@
         <item name="blacklist">Қара тізім</item>
         <item name="whitelist">Ақ тізім</item>
     </array>
+    <array name="network_apply_modes">
+        <item name="off">Өшірулі</item>
+        <item name="suggest">Ұсыну</item>
+        <item name="auto">Автоматты қолдану</item>
+    </array>
+    <array name="network_apply_modes_entries">
+        <item name="off">off</item>
+        <item name="suggest">suggest</item>
+        <item name="auto">auto</item>
+    </array>
 </resources>

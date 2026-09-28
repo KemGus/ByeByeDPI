@@ -26,4 +26,14 @@
         <item name="blacklist">Danh sách đen</item>
         <item name="whitelist">Danh sách trắng</item>
     </array>
+    <array name="network_apply_modes">
+        <item name="off">Tắt</item>
+        <item name="suggest">Đề xuất</item>
+        <item name="auto">Tự động áp dụng</item>
+    </array>
+    <array name="network_apply_modes_entries">
+        <item name="off">off</item>
+        <item name="suggest">suggest</item>
+        <item name="auto">auto</item>
+    </array>
 </resources>

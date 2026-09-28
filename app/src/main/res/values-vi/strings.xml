@@ -243,4 +243,15 @@
     <string name="file_picker_unavailable">Thiết bị không có trình chọn tệp hệ thống. Hãy cấp quyền truy cập tệp cho ứng dụng để tiếp tục.</string>
     <string name="grant_access">Cấp quyền</string>
     <string name="storage_access_not_granted">Chưa cấp quyền truy cập tệp</string>
+    <string name="test_adaptive">Tự động tạo chiến lược mới</string>
+    <string name="test_adaptive_summary">Sau danh sách, thử cải thiện các chiến lược tốt nhất</string>
+    <string name="network_apply">Chiến lược theo mạng</string>
+    <string name="network_name">Tên mạng (thủ công)</string>
+    <string name="network_name_summary">Để trống — tự động nhận diện mạng</string>
+    <string name="network_location">Cho phép đọc tên Wi-Fi</string>
+    <string name="network_location_summary">Cần quyền vị trí, nếu không mọi mạng Wi-Fi sẽ bị coi là một</string>
+    <string name="network_location_granted">Đã cấp</string>
+    <string name="network_suggest_title">Chiến lược cho mạng “%1$s”</string>
+    <string name="network_suggest_message">Chiến lược tốt nhất đã lưu cho mạng này:\n%1$s\n\nÁp dụng?</string>
+    <string name="network_suggest_apply">Áp dụng</string>
 </resources>

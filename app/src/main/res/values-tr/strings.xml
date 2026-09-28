@@ -242,4 +242,15 @@
     <string name="file_picker_unavailable">Cihazda sistem dosya seçicisi yok. Devam etmek için uygulamaya dosya erişimi verin.</string>
     <string name="grant_access">Erişim ver</string>
     <string name="storage_access_not_granted">Dosya erişimi verilmedi</string>
+    <string name="test_adaptive">Yeni stratejileri otomatik üret</string>
+    <string name="test_adaptive_summary">Listeden sonra en iyilerini geliştirmeyi dener</string>
+    <string name="network_apply">Ağa özel strateji</string>
+    <string name="network_name">Ağ adı (manuel)</string>
+    <string name="network_name_summary">Boş — ağı otomatik algıla</string>
+    <string name="network_location">Wi-Fi adını okumaya izin ver</string>
+    <string name="network_location_summary">Konum erişimi gerekir, aksi halde tüm Wi-Fi ağları aynı sayılır</string>
+    <string name="network_location_granted">Verildi</string>
+    <string name="network_suggest_title">“%1$s” ağı için strateji</string>
+    <string name="network_suggest_message">Bu ağ için kaydedilmiş en iyi strateji:\n%1$s\n\nUygulansın mı?</string>
+    <string name="network_suggest_apply">Uygula</string>
 </resources>

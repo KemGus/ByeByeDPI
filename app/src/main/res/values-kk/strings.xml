@@ -242,4 +242,15 @@
     <string name="file_picker_unavailable">Құрылғыда жүйелік файл таңдау құралы жоқ. Жалғастыру үшін қолданбаға файлдарға рұқсат беріңіз.</string>
     <string name="grant_access">Рұқсат беру</string>
     <string name="storage_access_not_granted">Файлдарға рұқсат берілмеді</string>
+    <string name="test_adaptive">Жаңа стратегияларды автоматты түрде құру</string>
+    <string name="test_adaptive_summary">Тізімнен кейін ең жақсыларын жақсартуға тырысады</string>
+    <string name="network_apply">Желіге арналған стратегия</string>
+    <string name="network_name">Желі атауы (қолмен)</string>
+    <string name="network_name_summary">Бос — желіні автоматты анықтау</string>
+    <string name="network_location">Wi-Fi атауын оқуға рұқсат беру</string>
+    <string name="network_location_summary">Геолокацияға рұқсат керек, әйтпесе барлық Wi-Fi бір желі болып саналады</string>
+    <string name="network_location_granted">Рұқсат берілген</string>
+    <string name="network_suggest_title">«%1$s» желісіне арналған стратегия</string>
+    <string name="network_suggest_message">Осы желі үшін сақталған ең жақсы стратегия:\n%1$s\n\nҚолдану керек пе?</string>
+    <string name="network_suggest_apply">Қолдану</string>
 </resources>

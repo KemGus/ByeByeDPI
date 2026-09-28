@@ -33,12 +33,14 @@ import io.github.romanvht.byedpi.services.appStatus
 import io.github.romanvht.byedpi.utility.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.system.exitProcess
 
 class MainActivity : BaseActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var historyUtils: HistoryUtils
+    private var suggestedStrategy: String? = null
 
     companion object {
         private val TAG: String = MainActivity::class.java.simpleName
@@ -249,6 +251,7 @@ class MainActivity : BaseActivity() {
         ServiceManager.refresh(this)
         updateStatus()
         updateStrategyButton()
+        suggestNetworkStrategy()
     }
 
     override fun onDestroy() {
@@ -503,6 +506,24 @@ class MainActivity : BaseActivity() {
         }
 
         dialog.show()
+    }
+
+    private fun suggestNetworkStrategy() {
+        if (NetworkProfileUtils.applyMode(this) != ApplyMode.Suggest) return
+
+        lifecycleScope.launch {
+            val pending = withContext(Dispatchers.IO) { NetworkProfileUtils.pendingBest(this@MainActivity) } ?: return@launch
+            val (network, command) = pending
+            if (isFinishing || suggestedStrategy == network.key + command) return@launch
+            suggestedStrategy = network.key + command
+
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle(getString(R.string.network_suggest_title, network.label))
+                .setMessage(getString(R.string.network_suggest_message, command))
+                .setPositiveButton(R.string.network_suggest_apply) { _, _ -> applyStrategy(command) }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
     }
 
     private fun applyStrategy(commandText: String) {

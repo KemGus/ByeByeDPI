@@ -62,4 +62,31 @@
         app:useSimpleSummaryProvider="true"
         app:iconSpaceReserved="false" />
 
+    <SwitchPreference
+        android:key="byedpi_proxytest_adaptive"
+        android:title="@string/test_adaptive"
+        android:summary="@string/test_adaptive_summary"
+        android:defaultValue="true"
+        app:iconSpaceReserved="false" />
+
+    <ListPreference
+        android:key="byedpi_network_apply"
+        android:title="@string/network_apply"
+        android:entries="@array/network_apply_modes"
+        android:entryValues="@array/network_apply_modes_entries"
+        android:summary="%s"
+        android:defaultValue="off"
+        app:iconSpaceReserved="false" />
+
+    <EditTextPreference
+        android:key="byedpi_network_name"
+        android:title="@string/network_name"
+        android:summary="@string/network_name_summary"
+        app:iconSpaceReserved="false" />
+
+    <Preference
+        android:key="byedpi_network_location"
+        android:title="@string/network_location"
+        app:iconSpaceReserved="false" />
+
 </PreferenceScreen>

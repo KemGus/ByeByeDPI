@@ -168,6 +168,7 @@ class TestActivity : BaseActivity() {
                     strategy.totalRequests = value.totalRequests
                     strategy.currentProgress = value.currentProgress
                     strategy.isCompleted = value.isCompleted
+                    strategy.note = value.note
                     strategy.siteResults.clear()
                     strategy.siteResults.addAll(value.siteResults)
                     if (!reorder) strategyAdapter.updateStrategy(strategy)
@@ -213,7 +214,9 @@ class TestActivity : BaseActivity() {
         val sb = StringBuilder()
 
         completeStrategies.forEach { strategy ->
-            sb.appendLine("${strategy.command}\n")
+            sb.appendLine(strategy.command)
+            strategy.note?.let { sb.appendLine(it) }
+            sb.appendLine()
 
             strategy.siteResults.forEach { site ->
                 sb.appendLine("${site.site} - ${site.successCount}/${site.totalCount}")

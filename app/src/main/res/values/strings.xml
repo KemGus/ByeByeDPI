@@ -242,4 +242,15 @@
     <string name="file_picker_unavailable">На устройстве отсутствует системный выбор файлов. Для продолжения предоставьте приложению доступ к файлам.</string>
     <string name="grant_access">Предоставить доступ</string>
     <string name="storage_access_not_granted">Доступ к файлам не предоставлен</string>
+    <string name="test_adaptive">Подбирать стратегии автоматически</string>
+    <string name="test_adaptive_summary">После списка пытается улучшить лучшие варианты</string>
+    <string name="network_apply">Стратегия для сети</string>
+    <string name="network_name">Название сети (вручную)</string>
+    <string name="network_name_summary">Пусто — определять сеть автоматически</string>
+    <string name="network_location">Разрешить определять имя Wi-Fi</string>
+    <string name="network_location_summary">Нужен доступ к геолокации, иначе все Wi-Fi считаются одной сетью</string>
+    <string name="network_location_granted">Разрешено</string>
+    <string name="network_suggest_title">Стратегия для сети «%1$s»</string>
+    <string name="network_suggest_message">Для этой сети сохранена лучшая стратегия:\n%1$s\n\nПрименить?</string>
+    <string name="network_suggest_apply">Применить</string>
 </resources>

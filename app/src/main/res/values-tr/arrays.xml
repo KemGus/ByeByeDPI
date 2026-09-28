@@ -26,4 +26,14 @@
         <item name="blacklist">Kara liste</item>
         <item name="whitelist">Beyaz liste</item>
     </array>
+    <array name="network_apply_modes">
+        <item name="off">Kapalı</item>
+        <item name="suggest">Öner</item>
+        <item name="auto">Otomatik uygula</item>
+    </array>
+    <array name="network_apply_modes_entries">
+        <item name="off">off</item>
+        <item name="suggest">suggest</item>
+        <item name="auto">auto</item>
+    </array>
 </resources>

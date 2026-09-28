@@ -20,6 +20,8 @@ import com.google.gson.reflect.TypeToken
 import io.github.romanvht.byedpi.R
 import io.github.romanvht.byedpi.activities.TestActivity
 import io.github.romanvht.byedpi.data.*
+import io.github.romanvht.byedpi.strategy.StrategyMutator
+import io.github.romanvht.byedpi.strategy.StrategyPlanner
 import io.github.romanvht.byedpi.utility.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +40,9 @@ class TestService : Service() {
         private const val CHANNEL = "Proxy test"
         private const val RESULTS_FILE = "proxy_test_results.json"
         private const val NOTIFICATION_ID = 4
+        private const val ADAPTIVE_ROUNDS = 3
+        private const val ADAPTIVE_SEEDS = 3
+        private const val ADAPTIVE_CANDIDATES = 3
         private val mutableState = MutableStateFlow(TestState())
         private val resultsLock = Any()
         val state: StateFlow<TestState> = mutableState.asStateFlow()
@@ -186,32 +191,82 @@ class TestService : Service() {
                     Toast.makeText(this@TestService, R.string.test_settings_domain_empty, Toast.LENGTH_LONG).show()
                     return@launch
                 }
-                strategies.addAll(options.commands.map { StrategyResult(command = it) })
+                val network = withContext(Dispatchers.IO) { NetworkProfileUtils.currentNetwork(this@TestService) }
+                val known = withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).scores(network.key) }
+                val commands = StrategyPlanner.order(options.commands, known)
+                Log.i(TAG, "Testing ${commands.size} strategies on ${network.key}, ${known.size} already known")
+                strategies.addAll(commands.map { StrategyResult(command = it) })
                 prepared = true
                 getPreferences().edit(commit = true) { putBoolean("is_test_running", true) }
                 publish(strategies, 0)
                 ServiceManager.waitStop()
-                val configurations = withContext(Dispatchers.IO) {
-                    options.commands.map { command ->
-                        runCatching { testConfiguration(this@TestService, command, options.host, options.port) }
-                    }
-                }
 
-                for ((index, strategy) in strategies.withIndex()) {
+                suspend fun runStrategy(strategy: StrategyResult, index: Int) {
                     ensureActive()
                     currentStrategy = strategy
                     strategy.totalRequests = options.sites.size * options.requestsCount
                     publish(strategies, index + 1)
-                    val configuration = configurations[index].getOrNull()
+                    val configuration = withContext(Dispatchers.IO) {
+                        runCatching { testConfiguration(this@TestService, strategy.command, options.host, options.port) }
+                    }.getOrNull()
                     if (configuration == null || !checkStrategy(strategy, strategies, configuration, options)) {
                         resetStrategyResult(strategy, options)
                     }
                     strategy.isCompleted = true
                     publish(strategies)
                     saveResults(strategies)
+                    withContext(Dispatchers.IO) {
+                        NetworkProfileUtils.record(this@TestService, network, strategy.command, strategy.successPercentage)
+                    }
                     stopEngine()
                     currentStrategy = null
                     delay(options.delaySec * 500L)
+                }
+
+                for ((index, strategy) in strategies.toList().withIndex()) {
+                    runStrategy(strategy, index)
+                }
+
+                if (getPreferences().getBoolean("byedpi_proxytest_adaptive", true)) {
+                    val tested = strategies.map { it.command }.toMutableSet()
+                    var best = strategies.maxOfOrNull { it.successPercentage } ?: 0
+                    for (round in 1..ADAPTIVE_ROUNDS) {
+                        if (best >= 100) break
+                        val scores = strategies.associate { it.command to it.successPercentage }
+                        val seeds = StrategyPlanner.seeds(scores, ADAPTIVE_SEEDS)
+                            .ifEmpty { listOfNotNull(withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).best(network.key) }) }
+                        val generated = seeds.flatMap { seed ->
+                            StrategyMutator.candidates(seed, ADAPTIVE_CANDIDATES, kotlin.random.Random, tested).map { seed to it }
+                        }.distinctBy { it.second }
+                        if (generated.isEmpty()) {
+                            Log.i(TAG, "Adaptive round $round: nothing to try")
+                            break
+                        }
+                        var improved = false
+                        for ((seed, command) in generated) {
+                            tested.add(command)
+                            val parent = scores[seed] ?: known[seed] ?: 0
+                            val strategy = StrategyResult(command = command)
+                            strategies.add(strategy)
+                            runStrategy(strategy, strategies.lastIndex)
+                            val score = strategy.successPercentage
+                            val outcome = when {
+                                score > best -> "improved best $best% -> $score%"
+                                score > parent -> "better than parent ($parent% -> $score%)"
+                                score == 0 -> "failed"
+                                else -> "no gain ($parent% -> $score%)"
+                            }
+                            strategy.note = "generated from $seed: $outcome"
+                            Log.i(TAG, "Adaptive round $round: $command $outcome")
+                            publish(strategies)
+                            saveResults(strategies)
+                            if (score > best) {
+                                best = score
+                                improved = true
+                            }
+                        }
+                        if (!improved) break
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -264,6 +319,8 @@ class TestService : Service() {
             val current = startEngine(configuration)
             supervisorScope {
                 val engineExit = async { current.awaitExit() }
+                val hopeless = CompletableDeferred<Boolean>()
+                var checked = 0
                 val check = async {
                     delay(settings.delaySec * 500L)
                     val host = when (configuration.host) {
@@ -283,6 +340,8 @@ class TestService : Service() {
                                 strategy.successCount += successCount
                                 strategy.siteResults.add(SiteResult(site, successCount, countRequests))
                                 publish(strategies)
+                                checked++
+                                if (StrategyPlanner.isHopeless(checked, strategy.successCount)) hopeless.complete(false)
                             }
                         }
                     )
@@ -292,6 +351,7 @@ class TestService : Service() {
                     select {
                         engineExit.onAwait { false }
                         check.onAwait { it }
+                        hopeless.onAwait { it }
                     }
                 } finally {
                     engineExit.cancel()
