@@ -195,7 +195,10 @@ class TestService : Service() {
                     return@launch
                 }
                 val network = withContext(Dispatchers.IO) { NetworkProfileUtils.currentNetwork(this@TestService) }
-                val known = withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).scores(network.key) }
+                val book = withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService) }
+                val known = book.scores(network.key)
+                val knownWinners = book.fullWinners(network.key).toSet()
+                val knownDead = book.deadSites(network.key, System.currentTimeMillis())
                 val commands = StrategyPlanner.order(options.commands, known)
                 val proven = commands.count { (known[it] ?: 0) > 0 }
                 val dead = commands.count { known[it] == 0 }
@@ -209,8 +212,23 @@ class TestService : Service() {
                 publish(strategies, 0)
                 ServiceManager.waitStop()
 
-                val screenSites = StrategyPlanner.sample(options.sites, SCREEN_SITES)
-                val staged = screenSites.size < options.sites.size
+                // Sites that already load without any bypass, or that nothing ever got through, say nothing
+                // about which strategy is best. Measure them once, then leave them out of the comparison.
+                val direct = SiteCheckUtils(null, 0).checkSitesAsync(
+                    sites = options.sites.filter { it !in knownDead },
+                    requestsCount = 1,
+                    requestTimeout = options.requestTimeout,
+                    concurrentRequests = maxOf(options.requestLimit, 50),
+                    fullLog = false,
+                )
+                val open = direct.filter { it.second > 0 }.map { it.first }.toSet()
+                val usable = StrategyPlanner.informativeSites(options.sites, open, knownDead)
+                decide(DecisionKind.Run, "Without any bypass ${open.size} of ${options.sites.size} sites already load",
+                    "${knownDead.size} sites are known to be unreachable here. Comparing on ${usable.size} sites: " +
+                        "everything blocked plus ${StrategyPlanner.CANARY_SITES} open ones as a sanity check")
+                var fullOptions = options.copy(sites = usable)
+                val screenSites = StrategyPlanner.sample(usable, SCREEN_SITES)
+                val staged = screenSites.size < usable.size
                 val screenOptions = options.copy(sites = screenSites)
                 val fullTested = mutableSetOf<String>()
 
@@ -233,9 +251,9 @@ class TestService : Service() {
                     delay(run.delaySec * 500L)
                 }
 
-                suspend fun settle(strategy: StrategyResult, title: String) {
+                suspend fun settle(strategy: StrategyResult, title: String, full: Boolean = true) {
                     withContext(Dispatchers.IO) {
-                        NetworkProfileUtils.record(this@TestService, network, strategy.command, strategy.successPercentage)
+                        NetworkProfileUtils.record(this@TestService, network, strategy.command, strategy.successPercentage, full)
                     }
                     decide(DecisionKind.Result, "${strategy.successPercentage}%  (${strategy.successCount}/${strategy.totalRequests})  $title".trim(), strategy.command)
                 }
@@ -248,7 +266,7 @@ class TestService : Service() {
                     strategy.currentProgress = 0
                     strategy.successCount = 0
                     strategy.siteResults.clear()
-                    runStrategy(strategy, strategies.indexOf(strategy), options)
+                    runStrategy(strategy, strategies.indexOf(strategy), fullOptions)
                     val secondPercent = strategy.successPercentage
                     strategy.successCount = StrategyPlanner.average(firstCount, strategy.successCount)
                     strategy.note = "average of two runs: $firstPercent% and $secondPercent%"
@@ -258,18 +276,25 @@ class TestService : Service() {
                 }
 
                 for ((index, strategy) in strategies.toList().withIndex()) {
-                    runStrategy(strategy, index, screenOptions)
-                    settle(strategy, if (staged) "quick screen, ${screenSites.size} sites" else "")
-                    if (!staged) fullTested.add(strategy.command)
+                    if (strategy.command in knownWinners) {
+                        // Already proven here: measure it properly right away instead of screening it again.
+                        runStrategy(strategy, index, fullOptions)
+                        settle(strategy, "full test of an earlier winner, ${fullOptions.sites.size} sites")
+                        fullTested.add(strategy.command)
+                    } else {
+                        runStrategy(strategy, index, screenOptions)
+                        settle(strategy, if (staged) "quick screen, ${screenSites.size} sites" else "", full = !staged)
+                        if (!staged) fullTested.add(strategy.command)
+                    }
                 }
 
                 if (staged) {
-                    val screened = strategies.associate { it.command to it.successPercentage }
-                    val promoted = StrategyPlanner.seeds(screened, StrategyPlanner.promoteCount(strategies.size))
+                    val screened = strategies.filter { it.command !in fullTested }.associate { it.command to it.successPercentage }
+                    val promoted = StrategyPlanner.seeds(screened, StrategyPlanner.promoteCount(screened.size))
                     if (promoted.isEmpty()) {
-                        decide(DecisionKind.Stop, "Nothing passed the quick screen", "No strategy got a single site through")
+                        decide(DecisionKind.Stop, "Nothing new passed the quick screen", "No untested strategy got a single site through")
                     } else {
-                        decide(DecisionKind.Order, "Quick screen done: full test for the top ${promoted.size} of ${strategies.size}",
+                        decide(DecisionKind.Order, "Quick screen done: full test for the top ${promoted.size} of ${screened.size}",
                             promoted.joinToString("\n") { "${screened[it]}%  $it" })
                         for (command in promoted) {
                             val strategy = strategies.first { it.command == command }
@@ -277,11 +302,28 @@ class TestService : Service() {
                             strategy.currentProgress = 0
                             strategy.successCount = 0
                             strategy.siteResults.clear()
-                            runStrategy(strategy, strategies.indexOf(strategy), options)
-                            settle(strategy, "full test, ${options.sites.size} sites")
+                            runStrategy(strategy, strategies.indexOf(strategy), fullOptions)
+                            settle(strategy, "full test, ${fullOptions.sites.size} sites")
                             fullTested.add(command)
                         }
                     }
+                }
+
+                // Sites that not one fully tested strategy could load are dead weight from here on.
+                val fullRuns = strategies.filter { it.command in fullTested }
+                val newDead = StrategyPlanner.deadSites(fullRuns.map { run -> run.siteResults.associate { it.site to it.successCount } })
+                    .filter { it !in open }.toSet()
+                if (newDead.isNotEmpty() && fullOptions.sites.size - newDead.size >= 10) {
+                    fullRuns.forEach { run ->
+                        run.siteResults.removeAll { it.site in newDead }
+                        run.totalRequests = run.siteResults.sumOf { it.totalCount }
+                    }
+                    fullOptions = fullOptions.copy(sites = fullOptions.sites.filter { it !in newDead })
+                    publish(strategies)
+                    saveResults(strategies)
+                    withContext(Dispatchers.IO) { NetworkProfileUtils.markDead(this@TestService, network, newDead) }
+                    decide(DecisionKind.Skip, "Ignoring ${newDead.size} sites nothing can reach",
+                        "Scores now cover ${fullOptions.sites.size} sites. Remembered for this network for a week.\n" + newDead.take(5).joinToString(", "))
                 }
 
                 fun fullScores() = strategies.filter { it.command in fullTested }.associate { it.command to it.successPercentage }
@@ -321,7 +363,7 @@ class TestService : Service() {
                             decide(DecisionKind.Try, "Trying a variation of a $parent% strategy", "${StrategyMutator.describe(seed, command)}\n$command")
                             val strategy = StrategyResult(command = command)
                             strategies.add(strategy)
-                            runStrategy(strategy, strategies.lastIndex, options)
+                            runStrategy(strategy, strategies.lastIndex, fullOptions)
                             fullTested.add(command)
                             fun verdict(score: Int) = when {
                                 score > best -> "improved best $best% -> $score%"

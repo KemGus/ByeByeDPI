@@ -93,9 +93,19 @@ object NetworkProfileUtils {
         }
     }
 
-    fun record(context: Context, network: NetworkId, command: String, score: Int) = synchronized(lock) {
+    fun record(context: Context, network: NetworkId, command: String, score: Int, full: Boolean) = synchronized(lock) {
         val book = load(context)
-        book.record(network.key, network.label, command, score, System.currentTimeMillis())
+        book.record(network.key, network.label, command, score, System.currentTimeMillis(), full)
+        save(context, book)
+    }
+
+    fun markDead(context: Context, network: NetworkId, sites: Collection<String>) = synchronized(lock) {
+        val book = load(context)
+        book.markDead(network.key, network.label, sites, System.currentTimeMillis())
+        save(context, book)
+    }
+
+    private fun save(context: Context, book: ProfileBook) {
         val file = AtomicFile(File(context.filesDir, FILE))
         val output = file.startWrite()
         try {

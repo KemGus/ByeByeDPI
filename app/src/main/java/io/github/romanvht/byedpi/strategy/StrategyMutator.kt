@@ -13,7 +13,8 @@ object StrategyMutator {
     private val positional = Regex("""^-([sdoqr])(-?\d+)((?::\d+){0,2})((?:\+[a-z]+)?)$""")
     private val ttl = Regex("""^-t(\d+)$""")
     private val fakeOffset = Regex("""^-f(-?\d+)$""")
-    private val flagVariants = listOf("+s", "+sm", "+h", "+hm", "+e")
+    // Only combinations that already appear in the bundled strategy list, so a variation stays a valid command.
+    private val flagVariants = listOf("+s", "+sm", "+sh", "+se", "+h", "+hm")
     private val swappable = listOf('s', 'd')
 
     fun candidates(seed: String, count: Int, random: Random, exclude: Set<String> = emptySet()): List<String> {
@@ -51,14 +52,20 @@ object StrategyMutator {
         positional.matchEntire(token)?.let { match ->
             val (kind, offset, repeat, flags) = match.destructured
             return when (random.nextInt(3)) {
-                0 -> "-$kind${shift(offset.toInt(), random)}$repeat$flags"
+                0 -> "-$kind${shiftOffset(offset.toInt(), random)}$repeat$flags"
                 1 -> if (flags.isEmpty()) null else "-$kind$offset$repeat${pickOther(flagVariants, flags, random)}"
                 else -> if (kind[0] in swappable) "-${pickOther(swappable, kind[0], random)}$offset$repeat$flags" else null
             }
         }
         ttl.matchEntire(token)?.let { return "-t${shift(it.groupValues[1].toInt(), random).coerceIn(1, 30)}" }
-        fakeOffset.matchEntire(token)?.let { return "-f${shift(it.groupValues[1].toInt(), random)}" }
+        fakeOffset.matchEntire(token)?.let { return "-f${shiftOffset(it.groupValues[1].toInt(), random)}" }
         return null
+    }
+
+    /** A negative offset counts from the end of the packet, so a shift must never cross zero. */
+    private fun shiftOffset(value: Int, random: Random): Int {
+        val shifted = shift(value, random)
+        return if (value >= 0) shifted.coerceAtLeast(0) else shifted.coerceAtMost(-1)
     }
 
     private fun shift(value: Int, random: Random): Int {

@@ -30,4 +30,25 @@ object StrategyPlanner {
 
     /** Two measurements of the same strategy, rounded half up. */
     fun average(first: Int, second: Int): Int = (first + second + 1) / 2
+
+    /** Open sites kept as a sanity check that a strategy does not break normal traffic. */
+    const val CANARY_SITES = 5
+    private const val MIN_SITES = 10
+
+    /**
+     * Sites worth measuring: skip ones reachable without any bypass and ones known to be dead here,
+     * but keep a few open ones so a strategy that breaks normal traffic still shows up.
+     */
+    fun informativeSites(all: List<String>, open: Set<String>, dead: Set<String>): List<String> {
+        val blocked = all.filter { it !in open && it !in dead }
+        val canaries = sample(all.filter { it in open && it !in dead }, CANARY_SITES).toSet()
+        val picked = all.filter { it in blocked || it in canaries }
+        return if (picked.size >= MIN_SITES) picked else all.filter { it !in dead }.ifEmpty { all }
+    }
+
+    /** Sites that not a single one of enough measured strategies got through. */
+    fun deadSites(results: List<Map<String, Int>>, minStrategies: Int = 5): Set<String> {
+        if (results.size < minStrategies) return emptySet()
+        return results.flatMap { it.keys }.filter { site -> results.all { (it[site] ?: 0) == 0 } }.toSet()
+    }
 }

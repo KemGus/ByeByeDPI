@@ -60,4 +60,28 @@ class StrategyPlannerTest {
         assertEquals(86, StrategyPlanner.average(89, 82))
         assertEquals(50, StrategyPlanner.average(50, 50))
     }
+
+    @Test
+    fun informativeSitesKeepsOnlyAFewOpenOnes() {
+        val all = (1..40).map { "s$it" }
+        val open = (1..20).map { "s$it" }.toSet()
+        val picked = StrategyPlanner.informativeSites(all, open, dead = setOf("s30"))
+        assertEquals(20 - 1 + StrategyPlanner.CANARY_SITES, picked.size)
+        assertFalse("s30" in picked)
+        assertEquals(StrategyPlanner.CANARY_SITES, picked.count { it in open })
+    }
+
+    @Test
+    fun informativeSitesFallsBackWhenTooFewRemain() {
+        val all = (1..12).map { "s$it" }
+        val picked = StrategyPlanner.informativeSites(all, open = all.toSet(), dead = setOf("s1"))
+        assertEquals(all - "s1", picked)
+    }
+
+    @Test
+    fun deadSitesNeedEnoughStrategiesAndNoSuccess() {
+        val results = List(5) { mapOf("a" to 0, "b" to if (it == 2) 1 else 0) }
+        assertEquals(setOf("a"), StrategyPlanner.deadSites(results))
+        assertEquals(emptySet<String>(), StrategyPlanner.deadSites(results.take(4)))
+    }
 }

@@ -31,4 +31,28 @@ class ProfileBookTest {
         assertEquals(ProfileBook.MAX_ENTRIES, book.scores("n").size)
         assertEquals(99, book.profiles.getValue("n").best!!.value.score)
     }
+
+    @Test
+    fun quickScreenDoesNotOverwriteFullMeasurement() {
+        val book = ProfileBook()
+        book.record("n", "n", "-s1", 51, 1, full = true)
+        book.record("n", "n", "-s1", 33, 2, full = false)
+        assertEquals(mapOf("-s1" to 51), book.scores("n"))
+        assertEquals(listOf("-s1"), book.fullWinners("n"))
+    }
+
+    @Test
+    fun screenOnlyResultsAreNotFullWinners() {
+        val book = ProfileBook()
+        book.record("n", "n", "-s1", 46, 1, full = false)
+        assertEquals(emptyList<String>(), book.fullWinners("n"))
+    }
+
+    @Test
+    fun deadSitesExpire() {
+        val book = ProfileBook()
+        book.markDead("n", "n", listOf("a.com"), now = 0)
+        assertEquals(setOf("a.com"), book.deadSites("n", now = 1000))
+        assertEquals(emptySet<String>(), book.deadSites("n", now = ProfileBook.DEAD_TTL_MS + 1))
+    }
 }

@@ -54,4 +54,26 @@ class StrategyMutatorTest {
         assertEquals("-s3:5+sm → -s4:5+sm", StrategyMutator.describe("-Qr -s3:5+sm -a1", "-Qr -s4:5+sm -a1"))
         assertEquals("-a2", StrategyMutator.describe("-a1", "-a2").substringAfter("→ "))
     }
+
+    @Test
+    fun offsetsNeverCrossZero() {
+        repeat(200) { round ->
+            StrategyMutator.mutate("-d1", Random(round))?.let { mutated ->
+                mutated.removePrefix("-d").toIntOrNull()?.let { assertTrue(mutated, it >= 0) }
+            }
+            StrategyMutator.mutate("-r-5", Random(round))?.let { mutated ->
+                mutated.removePrefix("-r").toIntOrNull()?.let { assertTrue(mutated, it < 0) }
+            }
+        }
+    }
+
+    @Test
+    fun onlyKnownFlagCombinationsAreProduced() {
+        val known = setOf("+s", "+sm", "+sh", "+se", "+h", "+hm")
+        repeat(200) { round ->
+            val mutated = StrategyMutator.mutate("-s20+s", Random(round)) ?: return@repeat
+            val flags = "+" + mutated.substringAfter("+", "")
+            if (flags != "+") assertTrue(mutated, flags in known)
+        }
+    }
 }

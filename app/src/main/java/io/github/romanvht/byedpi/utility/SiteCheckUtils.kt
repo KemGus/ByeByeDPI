@@ -21,8 +21,9 @@ import java.net.URL
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.coroutineContext
 
+/** Checks sites through a local SOCKS proxy, or directly when `proxyIp` is null. */
 class SiteCheckUtils(
-    private val proxyIp: String,
+    private val proxyIp: String?,
     private val proxyPort: Int
 ) {
 
@@ -68,7 +69,7 @@ class SiteCheckUtils(
             return@withContext 0
         }
 
-        val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(proxyIp, proxyPort))
+        val proxy = if (proxyIp == null) Proxy.NO_PROXY else Proxy(Proxy.Type.SOCKS, InetSocketAddress(proxyIp, proxyPort))
 
         repeat(requestsCount) { attempt ->
             coroutineContext.ensureActive()
