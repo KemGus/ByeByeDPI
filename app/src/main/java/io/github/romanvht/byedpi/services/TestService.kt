@@ -44,6 +44,8 @@ class TestService : Service() {
         private const val ADAPTIVE_ROUNDS = 3
         private const val ADAPTIVE_SEEDS = 3
         private const val ADAPTIVE_CANDIDATES = 3
+        private const val SCREEN_SITES = 15
+        private const val CONFIRM_TOP = 3
         private val mutableState = MutableStateFlow(TestState())
         private val resultsLock = Any()
         val state: StateFlow<TestState> = mutableState.asStateFlow()
@@ -207,39 +209,96 @@ class TestService : Service() {
                 publish(strategies, 0)
                 ServiceManager.waitStop()
 
-                suspend fun runStrategy(strategy: StrategyResult, index: Int) {
+                val screenSites = StrategyPlanner.sample(options.sites, SCREEN_SITES)
+                val staged = screenSites.size < options.sites.size
+                val screenOptions = options.copy(sites = screenSites)
+                val fullTested = mutableSetOf<String>()
+
+                suspend fun runStrategy(strategy: StrategyResult, index: Int, run: TestSettings) {
                     ensureActive()
                     currentStrategy = strategy
-                    strategy.totalRequests = options.sites.size * options.requestsCount
+                    strategy.totalRequests = run.sites.size * run.requestsCount
                     publish(strategies, index + 1)
                     val configuration = withContext(Dispatchers.IO) {
-                        runCatching { testConfiguration(this@TestService, strategy.command, options.host, options.port) }
+                        runCatching { testConfiguration(this@TestService, strategy.command, run.host, run.port) }
                     }.getOrNull()
-                    if (configuration == null || !checkStrategy(strategy, strategies, configuration, options)) {
-                        resetStrategyResult(strategy, options)
+                    if (configuration == null || !checkStrategy(strategy, strategies, configuration, run)) {
+                        resetStrategyResult(strategy, run)
                     }
                     strategy.isCompleted = true
                     publish(strategies)
                     saveResults(strategies)
+                    stopEngine()
+                    currentStrategy = null
+                    delay(run.delaySec * 500L)
+                }
+
+                suspend fun settle(strategy: StrategyResult, title: String) {
                     withContext(Dispatchers.IO) {
                         NetworkProfileUtils.record(this@TestService, network, strategy.command, strategy.successPercentage)
                     }
-                    decide(DecisionKind.Result, "${strategy.successPercentage}%  (${strategy.successCount}/${strategy.totalRequests})", strategy.command)
-                    stopEngine()
-                    currentStrategy = null
-                    delay(options.delaySec * 500L)
+                    decide(DecisionKind.Result, "${strategy.successPercentage}%  (${strategy.successCount}/${strategy.totalRequests})  $title".trim(), strategy.command)
+                }
+
+                // One run can be lucky or unlucky: measure again and keep the average.
+                suspend fun confirm(strategy: StrategyResult) {
+                    val firstCount = strategy.successCount
+                    val firstPercent = strategy.successPercentage
+                    strategy.isCompleted = false
+                    strategy.currentProgress = 0
+                    strategy.successCount = 0
+                    strategy.siteResults.clear()
+                    runStrategy(strategy, strategies.indexOf(strategy), options)
+                    val secondPercent = strategy.successPercentage
+                    strategy.successCount = StrategyPlanner.average(firstCount, strategy.successCount)
+                    strategy.note = "average of two runs: $firstPercent% and $secondPercent%"
+                    publish(strategies)
+                    saveResults(strategies)
+                    settle(strategy, "average of $firstPercent% and $secondPercent%")
                 }
 
                 for ((index, strategy) in strategies.toList().withIndex()) {
-                    runStrategy(strategy, index)
+                    runStrategy(strategy, index, screenOptions)
+                    settle(strategy, if (staged) "quick screen, ${screenSites.size} sites" else "")
+                    if (!staged) fullTested.add(strategy.command)
+                }
+
+                if (staged) {
+                    val screened = strategies.associate { it.command to it.successPercentage }
+                    val promoted = StrategyPlanner.seeds(screened, StrategyPlanner.promoteCount(strategies.size))
+                    if (promoted.isEmpty()) {
+                        decide(DecisionKind.Stop, "Nothing passed the quick screen", "No strategy got a single site through")
+                    } else {
+                        decide(DecisionKind.Order, "Quick screen done: full test for the top ${promoted.size} of ${strategies.size}",
+                            promoted.joinToString("\n") { "${screened[it]}%  $it" })
+                        for (command in promoted) {
+                            val strategy = strategies.first { it.command == command }
+                            strategy.isCompleted = false
+                            strategy.currentProgress = 0
+                            strategy.successCount = 0
+                            strategy.siteResults.clear()
+                            runStrategy(strategy, strategies.indexOf(strategy), options)
+                            settle(strategy, "full test, ${options.sites.size} sites")
+                            fullTested.add(command)
+                        }
+                    }
+                }
+
+                fun fullScores() = strategies.filter { it.command in fullTested }.associate { it.command to it.successPercentage }
+
+                val finalists = StrategyPlanner.seeds(fullScores(), CONFIRM_TOP)
+                if (finalists.isNotEmpty()) {
+                    decide(DecisionKind.Order, "Confirming the top ${finalists.size} with a second run",
+                        "One run can be lucky or unlucky, so their score becomes the average of two")
+                    for (command in finalists) confirm(strategies.first { it.command == command })
                 }
 
                 if (getPreferences().getBoolean("byedpi_proxytest_adaptive", true)) {
                     val tested = strategies.map { it.command }.toMutableSet()
-                    var best = strategies.maxOfOrNull { it.successPercentage } ?: 0
+                    var best = fullScores().values.maxOrNull() ?: 0
                     for (round in 1..ADAPTIVE_ROUNDS) {
                         if (best >= 100) break
-                        val scores = strategies.associate { it.command to it.successPercentage }
+                        val scores = fullScores()
                         var seeds = StrategyPlanner.seeds(scores, ADAPTIVE_SEEDS)
                         if (seeds.isEmpty()) {
                             seeds = listOfNotNull(withContext(Dispatchers.IO) { NetworkProfileUtils.load(this@TestService).best(network.key) })
@@ -262,16 +321,23 @@ class TestService : Service() {
                             decide(DecisionKind.Try, "Trying a variation of a $parent% strategy", "${StrategyMutator.describe(seed, command)}\n$command")
                             val strategy = StrategyResult(command = command)
                             strategies.add(strategy)
-                            runStrategy(strategy, strategies.lastIndex)
-                            val score = strategy.successPercentage
-                            val outcome = when {
+                            runStrategy(strategy, strategies.lastIndex, options)
+                            fullTested.add(command)
+                            fun verdict(score: Int) = when {
                                 score > best -> "improved best $best% -> $score%"
                                 score > parent -> "better than parent ($parent% -> $score%)"
                                 score == 0 -> "failed"
                                 else -> "no gain ($parent% -> $score%)"
                             }
-                            strategy.note = "generated from $seed: $outcome"
-                            decide(DecisionKind.Result, outcome, command)
+                            var score = strategy.successPercentage
+                            if (score > best) {
+                                confirm(strategy)
+                                score = strategy.successPercentage
+                                decide(DecisionKind.Result, verdict(score), command)
+                            } else {
+                                settle(strategy, verdict(score))
+                            }
+                            strategy.note = listOfNotNull("generated from $seed: ${verdict(score)}", strategy.note).joinToString("; ")
                             publish(strategies)
                             saveResults(strategies)
                             if (score > best) {
@@ -286,7 +352,7 @@ class TestService : Service() {
                     }
                     if (best >= 100) decide(DecisionKind.Stop, "Reached 100%", "Nothing left to improve")
                 }
-                decide(DecisionKind.Run, "Test finished", "Best result: ${strategies.maxOfOrNull { it.successPercentage } ?: 0}%")
+                decide(DecisionKind.Run, "Test finished", "Best result: ${fullScores().values.maxOrNull() ?: strategies.maxOfOrNull { it.successPercentage } ?: 0}%")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

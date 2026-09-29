@@ -20,4 +20,14 @@ object StrategyPlanner {
     /** Best commands to mutate next: highest scoring first, ignoring anything that scored zero. */
     fun seeds(results: Map<String, Int>, limit: Int): List<String> =
         results.entries.filter { it.value > 0 }.sortedByDescending { it.value }.take(limit).map { it.key }
+
+    /** Evenly spread sample so every part of an ordered site list is represented. */
+    fun sample(sites: List<String>, limit: Int): List<String> =
+        if (sites.size <= limit) sites else List(limit) { sites[it * sites.size / limit] }
+
+    /** How many strategies get the full site list after a quick screen. */
+    fun promoteCount(total: Int): Int = maxOf(5, total / 5).coerceAtMost(total)
+
+    /** Two measurements of the same strategy, rounded half up. */
+    fun average(first: Int, second: Int): Int = (first + second + 1) / 2
 }

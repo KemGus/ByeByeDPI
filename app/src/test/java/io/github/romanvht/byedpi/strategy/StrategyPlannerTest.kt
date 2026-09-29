@@ -36,4 +36,28 @@ class StrategyPlannerTest {
         val results = mapOf("a" to 0, "b" to 10, "c" to 70, "d" to 30)
         assertEquals(listOf("c", "d"), StrategyPlanner.seeds(results, 2))
     }
+
+    @Test
+    fun sampleKeepsShortListsAndSpreadsLongOnes() {
+        val short = listOf("a", "b")
+        assertEquals(short, StrategyPlanner.sample(short, 5))
+        val sites = (0 until 100).map { "s$it" }
+        val sample = StrategyPlanner.sample(sites, 10)
+        assertEquals(10, sample.distinct().size)
+        assertEquals("s0", sample.first())
+        assertTrue(sample.last() == "s90")
+    }
+
+    @Test
+    fun promoteCountIsBounded() {
+        assertEquals(3, StrategyPlanner.promoteCount(3))
+        assertEquals(5, StrategyPlanner.promoteCount(20))
+        assertEquals(12, StrategyPlanner.promoteCount(60))
+    }
+
+    @Test
+    fun averageRoundsHalfUp() {
+        assertEquals(86, StrategyPlanner.average(89, 82))
+        assertEquals(50, StrategyPlanner.average(50, 50))
+    }
 }
