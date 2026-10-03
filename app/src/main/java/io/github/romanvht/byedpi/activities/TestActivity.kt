@@ -157,7 +157,7 @@ class TestActivity : BaseActivity() {
         }
 
         val adaptive = findViewById<MaterialSwitch>(R.id.adaptiveSwitch)
-        adaptive.isChecked = prefs.getBoolean("byedpi_proxytest_adaptive", true)
+        adaptive.isChecked = prefs.getBoolean("byedpi_proxytest_adaptive", false)
         adaptive.setOnCheckedChangeListener { _, checked ->
             prefs.edit { putBoolean("byedpi_proxytest_adaptive", checked) }
         }

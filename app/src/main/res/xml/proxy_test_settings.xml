@@ -66,7 +66,14 @@
         android:key="byedpi_proxytest_adaptive"
         android:title="@string/test_adaptive"
         android:summary="@string/test_adaptive_summary"
-        android:defaultValue="true"
+        android:defaultValue="false"
+        app:iconSpaceReserved="false" />
+
+    <SwitchPreference
+        android:key="byedpi_proxytest_compare"
+        android:title="@string/test_compare"
+        android:summary="@string/test_compare_summary"
+        android:defaultValue="false"
         app:iconSpaceReserved="false" />
 
     <ListPreference

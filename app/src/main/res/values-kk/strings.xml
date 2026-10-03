@@ -268,4 +268,6 @@
     <string name="kind_stop">Тоқтау</string>
     <string name="kind_network">Желі</string>
     <string name="kind_switch">Ауыстыру</string>
+    <string name="test_compare">Бастапқы әдіспен салыстыру</string>
+    <string name="test_compare_summary">Алдымен ескі толық тест, содан кейін жаңасы; журналда екеуінің уақыты мен нәтижесі болады. Шамамен екі есе ұзақ</string>
 </resources>

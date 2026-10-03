@@ -268,4 +268,6 @@
     <string name="kind_stop">Dur</string>
     <string name="kind_network">Ağ</string>
     <string name="kind_switch">Geçiş</string>
+    <string name="test_compare">Orijinal yöntemle karşılaştır</string>
+    <string name="test_compare_summary">Önce eski tam testi, sonra yenisini çalıştırır ve ikisinin süresini ve sonucunu kaydeder. Yaklaşık iki kat uzun sürer</string>
 </resources>

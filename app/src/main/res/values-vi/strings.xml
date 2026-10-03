@@ -269,4 +269,6 @@
     <string name="kind_stop">Dừng</string>
     <string name="kind_network">Mạng</string>
     <string name="kind_switch">Chuyển</string>
+    <string name="test_compare">So sánh với phương pháp gốc</string>
+    <string name="test_compare_summary">Chạy kiểm tra đầy đủ cũ rồi đến phương pháp mới, ghi lại thời gian và kết quả của cả hai. Mất khoảng gấp đôi thời gian</string>
 </resources>

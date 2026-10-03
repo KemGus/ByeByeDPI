@@ -44,8 +44,9 @@ class TestService : Service() {
         private const val ADAPTIVE_ROUNDS = 3
         private const val ADAPTIVE_SEEDS = 3
         private const val ADAPTIVE_CANDIDATES = 3
-        private const val SCREEN_SITES = 15
-        private const val CONFIRM_TOP = 3
+        private const val QUICK_WINNERS = 3
+        private const val GOOD_ENOUGH = 50
+        private const val HOLD_PERCENT = 80
         private val mutableState = MutableStateFlow(TestState())
         private val resultsLock = Any()
         val state: StateFlow<TestState> = mutableState.asStateFlow()
@@ -227,12 +228,9 @@ class TestService : Service() {
                     "${knownDead.size} sites are known to be unreachable here. Comparing on ${usable.size} sites: " +
                         "everything blocked plus ${StrategyPlanner.CANARY_SITES} open ones as a sanity check")
                 var fullOptions = options.copy(sites = usable)
-                val screenSites = StrategyPlanner.sample(usable, SCREEN_SITES)
-                val staged = screenSites.size < usable.size
-                val screenOptions = options.copy(sites = screenSites)
                 val fullTested = mutableSetOf<String>()
 
-                suspend fun runStrategy(strategy: StrategyResult, index: Int, run: TestSettings) {
+                suspend fun runStrategy(strategy: StrategyResult, index: Int, run: TestSettings, earlyDrop: Boolean = true) {
                     ensureActive()
                     currentStrategy = strategy
                     strategy.totalRequests = run.sites.size * run.requestsCount
@@ -240,7 +238,7 @@ class TestService : Service() {
                     val configuration = withContext(Dispatchers.IO) {
                         runCatching { testConfiguration(this@TestService, strategy.command, run.host, run.port) }
                     }.getOrNull()
-                    if (configuration == null || !checkStrategy(strategy, strategies, configuration, run)) {
+                    if (configuration == null || !checkStrategy(strategy, strategies, configuration, run, earlyDrop)) {
                         resetStrategyResult(strategy, run)
                     }
                     strategy.isCompleted = true
@@ -275,67 +273,61 @@ class TestService : Service() {
                     settle(strategy, "average of $firstPercent% and $secondPercent%")
                 }
 
-                for ((index, strategy) in strategies.toList().withIndex()) {
-                    if (strategy.command in knownWinners) {
-                        // Already proven here: measure it properly right away instead of screening it again.
-                        runStrategy(strategy, index, fullOptions)
-                        settle(strategy, "full test of an earlier winner, ${fullOptions.sites.size} sites")
-                        fullTested.add(strategy.command)
-                    } else {
-                        runStrategy(strategy, index, screenOptions)
-                        settle(strategy, if (staged) "quick screen, ${screenSites.size} sites" else "", full = !staged)
-                        if (!staged) fullTested.add(strategy.command)
-                    }
+                // Benchmark: first measure the way the original app does (every strategy, every site, list
+                // order, no shortcuts), then the new way, so the log shows real before/after numbers.
+                val compare = getPreferences().getBoolean("byedpi_proxytest_compare", false)
+                var legacyScores = emptyMap<String, Int>()
+                var legacyMs = 0L
+                if (compare) {
+                    decide(DecisionKind.Run, "Benchmark: original method first", "All ${options.commands.size} strategies on all ${options.sites.size} sites, no shortcuts")
+                    val started = System.currentTimeMillis()
+                    val legacy = options.commands.map { StrategyResult(command = it) }
+                    strategies.clear()
+                    strategies.addAll(legacy)
+                    for ((index, strategy) in legacy.withIndex()) runStrategy(strategy, index, options, earlyDrop = false)
+                    legacyMs = System.currentTimeMillis() - started
+                    legacyScores = legacy.associate { it.command to it.successPercentage }
+                    decide(DecisionKind.Result, "Original method: best ${legacyScores.values.maxOrNull() ?: 0}% in ${legacyMs / 1000}s",
+                        legacyScores.maxByOrNull { it.value }?.key.orEmpty())
+                    strategies.clear()
+                    strategies.addAll(commands.map { StrategyResult(command = it) })
+                    publish(strategies, 0)
                 }
+                val smartStarted = System.currentTimeMillis()
 
-                if (staged) {
-                    val screened = strategies.filter { it.command !in fullTested }.associate { it.command to it.successPercentage }
-                    val promoted = StrategyPlanner.seeds(screened, StrategyPlanner.promoteCount(screened.size))
-                    if (promoted.isEmpty()) {
-                        decide(DecisionKind.Stop, "Nothing new passed the quick screen", "No untested strategy got a single site through")
-                    } else {
-                        decide(DecisionKind.Order, "Quick screen done: full test for the top ${promoted.size} of ${screened.size}",
-                            promoted.joinToString("\n") { "${screened[it]}%  $it" })
-                        for (command in promoted) {
-                            val strategy = strategies.first { it.command == command }
-                            strategy.isCompleted = false
-                            strategy.currentProgress = 0
-                            strategy.successCount = 0
-                            strategy.siteResults.clear()
-                            runStrategy(strategy, strategies.indexOf(strategy), fullOptions)
-                            settle(strategy, "full test, ${fullOptions.sites.size} sites")
-                            fullTested.add(command)
-                        }
-                    }
+                // Fast path: on a known network, re-check the earlier winners first. If one still holds up,
+                // there is no reason to sit through every other strategy again.
+                val winners = commands.filter { it in knownWinners }.take(QUICK_WINNERS)
+                for (command in winners) {
+                    val strategy = strategies.first { it.command == command }
+                    runStrategy(strategy, strategies.indexOf(strategy), fullOptions)
+                    settle(strategy, "re-check of an earlier winner")
+                    fullTested.add(command)
                 }
-
-                // Sites that not one fully tested strategy could load are dead weight from here on.
-                val fullRuns = strategies.filter { it.command in fullTested }
-                val newDead = StrategyPlanner.deadSites(fullRuns.map { run -> run.siteResults.associate { it.site to it.successCount } })
-                    .filter { it !in open }.toSet()
-                if (newDead.isNotEmpty() && fullOptions.sites.size - newDead.size >= 10) {
-                    fullRuns.forEach { run ->
-                        run.siteResults.removeAll { it.site in newDead }
-                        run.totalRequests = run.siteResults.sumOf { it.totalCount }
-                    }
-                    fullOptions = fullOptions.copy(sites = fullOptions.sites.filter { it !in newDead })
+                val holding = winners.map { cmd -> strategies.first { it.command == cmd } }.filter {
+                    val before = known[it.command] ?: 0
+                    it.successPercentage >= GOOD_ENOUGH && it.successPercentage * 100 >= before * HOLD_PERCENT
+                }.maxByOrNull { it.successPercentage }
+                val fastDone = holding != null && !compare
+                if (fastDone) {
+                    decide(DecisionKind.Stop, "Earlier winner still works (${holding!!.successPercentage}%)",
+                        "Skipping the other ${strategies.size - winners.size} strategies. Turn on the benchmark in test settings to force a full run.")
+                    strategies.retainAll { it.command in fullTested }
                     publish(strategies)
                     saveResults(strategies)
-                    withContext(Dispatchers.IO) { NetworkProfileUtils.markDead(this@TestService, network, newDead) }
-                    decide(DecisionKind.Skip, "Ignoring ${newDead.size} sites nothing can reach",
-                        "Scores now cover ${fullOptions.sites.size} sites. Remembered for this network for a week.\n" + newDead.take(5).joinToString(", "))
+                } else {
+                    if (winners.isNotEmpty()) decide(DecisionKind.Order, "Earlier winners got worse here, testing everything")
+                    for ((index, strategy) in strategies.toList().withIndex()) {
+                        if (strategy.command in fullTested) continue
+                        runStrategy(strategy, index, fullOptions)
+                        settle(strategy, "")
+                        fullTested.add(strategy.command)
+                    }
                 }
 
                 fun fullScores() = strategies.filter { it.command in fullTested }.associate { it.command to it.successPercentage }
 
-                val finalists = StrategyPlanner.seeds(fullScores(), CONFIRM_TOP)
-                if (finalists.isNotEmpty()) {
-                    decide(DecisionKind.Order, "Confirming the top ${finalists.size} with a second run",
-                        "One run can be lucky or unlucky, so their score becomes the average of two")
-                    for (command in finalists) confirm(strategies.first { it.command == command })
-                }
-
-                if (getPreferences().getBoolean("byedpi_proxytest_adaptive", true)) {
+                if (!fastDone && getPreferences().getBoolean("byedpi_proxytest_adaptive", false)) {
                     val tested = strategies.map { it.command }.toMutableSet()
                     var best = fullScores().values.maxOrNull() ?: 0
                     for (round in 1..ADAPTIVE_ROUNDS) {
@@ -394,6 +386,14 @@ class TestService : Service() {
                     }
                     if (best >= 100) decide(DecisionKind.Stop, "Reached 100%", "Nothing left to improve")
                 }
+                if (compare) {
+                    val smartMs = System.currentTimeMillis() - smartStarted
+                    val pick = fullScores().maxByOrNull { it.value }?.key
+                    val pickLegacy = pick?.let { legacyScores[it] }
+                    val legacyBest = legacyScores.values.maxOrNull() ?: 0
+                    decide(DecisionKind.Run, "Benchmark: original ${legacyMs / 1000}s vs new ${smartMs / 1000}s",
+                        "New method's pick scored ${pickLegacy ?: "?"}% in the original full test; the original's best was $legacyBest%.\n$pick")
+                }
                 decide(DecisionKind.Run, "Test finished", "Best result: ${fullScores().values.maxOrNull() ?: strategies.maxOfOrNull { it.successPercentage } ?: 0}%")
             } catch (e: CancellationException) {
                 throw e
@@ -441,6 +441,7 @@ class TestService : Service() {
         strategies: List<StrategyResult>,
         configuration: Configuration,
         settings: TestSettings,
+        earlyDrop: Boolean,
     ): Boolean {
         return try {
             val current = startEngine(configuration)
@@ -468,7 +469,7 @@ class TestService : Service() {
                                 strategy.siteResults.add(SiteResult(site, successCount, countRequests))
                                 publish(strategies)
                                 checked++
-                                if (StrategyPlanner.isHopeless(checked, strategy.successCount) && hopeless.complete(false)) {
+                                if (earlyDrop && StrategyPlanner.isHopeless(checked, strategy.successCount) && hopeless.complete(false)) {
                                     decide(DecisionKind.Skip, "Dropped early: 0 of the first $checked sites got through", strategy.command)
                                 }
                             }

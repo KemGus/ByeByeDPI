@@ -268,4 +268,6 @@
     <string name="kind_stop">Stop</string>
     <string name="kind_network">Network</string>
     <string name="kind_switch">Switch</string>
+    <string name="test_compare">Benchmark against the original method</string>
+    <string name="test_compare_summary">Runs the old full test, then the new one, and logs time and result of both. Takes about twice as long</string>
 </resources>
